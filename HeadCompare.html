@@ -6,14 +6,13 @@
 <style>
 body { margin:0; font-family:Arial; display:flex; height:100vh; }
 canvas { background:#fff; flex:1; }
-.panel { width:620px; padding:10px; border-left:1px solid #ccc; overflow-y:auto; }
+.panel { width:680px; padding:10px; border-left:1px solid #ccc; overflow-y:auto; }
 table { width:100%; border-collapse:collapse; margin-bottom:6px; }
 th,td { border:1px solid #ccc; padding:3px; text-align:center; }
 tr.selected { background:#ffeeba; }
 input[type=number]{ width:55px; }
 input.nameInput{ width:140px; font-weight:bold; }
 button{ width:100%; margin:4px 0; }
-.dragHandle{ cursor:move; user-select:none; }
 </style>
 </head>
 <body>
@@ -33,14 +32,14 @@ const canvas=document.getElementById("canvas"), ctx=canvas.getContext("2d");
 let scale=3, origin={x:canvas.width/2, y:canvas.height-50}, dragging=false, lastMouse=null, selected=null;
 const heads=[], simplifiedHeads=[];
 
-// ---------- Инициализация стартовых голов ----------
+// ---------- Инициализация ----------
 function initHeads(){
   addHead("Голова 1","#007bff",0.5);
   addHead("Голова 2","#28a745",0.5);
 }
 initHeads();
 
-// ---------- Добавление новой головы ----------
+// ---------- Добавление головы ----------
 function addHead(name="Новая голова",color="#0000ff",alpha=0.5,traps=null){
   const head={name,color,alpha,traps:traps?traps.map(t=>({...t})):[]};
   heads.push(head);
@@ -62,6 +61,13 @@ function renderHeadsPanel(){
     nameInput.value=head.name; nameInput.className="nameInput";
     nameInput.oninput=()=>{ head.name=nameInput.value; draw(); };
     h3.appendChild(nameInput); div.appendChild(h3);
+
+    // Масштаб ширины и высоты
+    const scaleWInput=document.createElement("input"); scaleWInput.type="number"; scaleWInput.value=1; scaleWInput.step=0.05;
+    const scaleHInput=document.createElement("input"); scaleHInput.type="number"; scaleHInput.value=1; scaleHInput.step=0.05;
+    scaleWInput.oninput = scaleHInput.oninput = ()=>{ scaleHead(head, +scaleWInput.value, +scaleHInput.value); rebuild(); updateSimplified(hi); };
+    div.appendChild(document.createTextNode(" Масштаб ширины ")); div.appendChild(scaleWInput);
+    div.appendChild(document.createTextNode(" Масштаб высоты ")); div.appendChild(scaleHInput);
 
     // Цвет и прозрачность
     const colorInput=document.createElement("input"); colorInput.type="color"; colorInput.value=head.color;
@@ -90,7 +96,7 @@ function renderHeadsPanel(){
     div.appendChild(btnDelHead);
 
     // Таблица
-    const table=document.createElement("table"); table.id="table"+hi; table.innerHTML="<tr><th>№</th><th>b₁</th><th>b₂</th><th>h</th><th>☰</th><th>+</th><th>✕</th></tr>"; div.appendChild(table);
+    const table=document.createElement("table"); table.id="table"+hi; table.innerHTML="<tr><th>№</th><th>b₁</th><th>b₂</th><th>h</th><th>+</th><th>✕</th></tr>"; div.appendChild(table);
     const btnAddRow=document.createElement("button"); btnAddRow.textContent="Добавить снизу"; btnAddRow.onclick=()=>{ head.traps.push({h:50,b1:120,b2:80}); rebuild(); }; div.appendChild(btnAddRow);
 
     container.appendChild(div);
@@ -98,12 +104,21 @@ function renderHeadsPanel(){
   rebuild();
 }
 
+// ---------- Масштабирование головы ----------
+function scaleHead(head, scaleW, scaleH){
+  head.traps.forEach(t=>{
+    t.b1 = Math.max(1, t.b1 * scaleW);
+    t.b2 = Math.max(1, t.b2 * scaleW);
+    t.h  = Math.max(1, t.h * scaleH);
+  });
+}
+
 // ---------- Таблица ----------
 function rebuild(){
   heads.forEach((head,hi)=>{
     const table=document.getElementById("table"+hi);
     if(!table) return;
-    table.innerHTML="<tr><th>№</th><th>b₁</th><th>b₂</th><th>h</th><th>☰</th><th>+</th><th>✕</th></tr>";
+    table.innerHTML="<tr><th>№</th><th>b₁</th><th>b₂</th><th>h</th><th>+</th><th>✕</th></tr>";
     const n=head.traps.length;
     [...head.traps].reverse().forEach((t,ri)=>{
       const idx=n-1-ri;
@@ -120,30 +135,9 @@ function rebuild(){
         c.appendChild(input);
       });
 
-      // Drag handle
-      const dragCell=row.insertCell();
-      dragCell.textContent="☰"; dragCell.className="dragHandle";
-      dragCell.draggable = true;
-      dragCell.ondragstart = e=>{
-        e.dataTransfer.setData("text/plain", idx+","+hi);
-        row.classList.add("dragging");
-      };
-      dragCell.ondragend = e=>row.classList.remove("dragging");
-      dragCell.ondragover = e=>e.preventDefault();
-      dragCell.ondrop = e=>{
-        e.preventDefault();
-        const [fromIdx,fromHi]=e.dataTransfer.getData("text/plain").split(",").map(Number);
-        if(fromHi!==hi) return;
-        const moved=head.traps.splice(fromIdx,1)[0];
-        const dropIdx=idx<fromIdx?idx:idx+1;
-        head.traps.splice(dropIdx,0,moved);
-        rebuild(); updateSimplified(hi);
-      };
-
       const add=row.insertCell(), del=row.insertCell();
       const bAdd=document.createElement("button"); bAdd.textContent="+"; bAdd.onclick=e=>{ e.stopPropagation(); head.traps.splice(idx+1,0,{...t}); rebuild(); updateSimplified(hi); }; add.appendChild(bAdd);
       const bDel=document.createElement("button"); bDel.textContent="✕"; bDel.onclick=e=>{ e.stopPropagation(); head.traps.splice(idx,1); rebuild(); updateSimplified(hi); }; del.appendChild(bDel);
-
     });
   });
   draw();
@@ -226,12 +220,6 @@ function exportDXF(){ /* твоя реализация */ }
 function download(n,d){ const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([d])); a.download=n; a.click(); }
 
 // ---------- Авто-упрощение ----------
-function autoSimplifySet(hi){
-  const simplified=optimizeTrapezoids(heads[hi].traps,15);
-  addHead(heads[hi].name+"-упрощённая",heads[hi].color,heads[hi].alpha,simplified);
-}
-
-// ---------- Обновление упрощённого контура ----------
 function updateSimplified(hi){
   simplifiedHeads[hi]=optimizeTrapezoids(heads[hi].traps,15);
   draw();
