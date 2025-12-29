@@ -6,7 +6,7 @@
 <style>
 body { margin:0; font-family:Arial; display:flex; height:100vh; }
 canvas { background:#fff; flex:1; }
-.panel { width:680px; padding:10px; border-left:1px solid #ccc; overflow-y:auto; }
+.panel { width:700px; padding:10px; border-left:1px solid #ccc; overflow-y:auto; }
 table { width:100%; border-collapse:collapse; margin-bottom:6px; }
 th,td { border:1px solid #ccc; padding:3px; text-align:center; }
 tr.selected { background:#ffeeba; }
@@ -77,9 +77,16 @@ function renderHeadsPanel(){
 
     div.appendChild(document.createElement("br"));
 
-    // Экспорт/импорт
+    // Экспорт/импорт параметров
     const btnExport=document.createElement("button"); btnExport.textContent="Экспорт параметров"; btnExport.onclick=()=>exportParams(hi); div.appendChild(btnExport);
     const btnImport=document.createElement("button"); btnImport.textContent="Импорт параметров"; btnImport.onclick=()=>importParams(hi); div.appendChild(btnImport);
+
+    // Экспорт/импорт .chc
+    const btnCHC=document.createElement("button"); btnCHC.textContent="Экспорт .chc";
+    btnCHC.onclick=()=>exportCHC(hi); div.appendChild(btnCHC);
+
+    const btnImportCHC=document.createElement("button"); btnImportCHC.textContent="Импорт .chc";
+    btnImportCHC.onclick=()=>importCHC(hi); div.appendChild(btnImportCHC);
 
     // Авто-упрощение
     const btnAuto=document.createElement("button"); btnAuto.textContent="Авто-упрощение до 15"; 
@@ -128,36 +135,42 @@ function rebuild(){
 
       ["b1","b2","h"].forEach((k,j)=>{
         const c=row.insertCell();
-        const input=document.createElement("input"); input.type="number"; input.value=t[k];
-        input.onmousedown=input.onclick=input.onfocus=e=>{ e.stopPropagation(); toggleSelect(hi,idx,true); input.select(); updateSimplified(hi); };
-        input.onkeydown=e=>handleArrowKeys(e,hi,idx,j);
-        input.oninput=()=>{ t[k]=+input.value; updateSimplified(hi); draw(); };
+        const input=document.createElement("input"); 
+        input.type="number"; 
+        input.value=t[k];
+
+        input.onfocus = ()=>{
+            selected={head:hi, idx};
+            input.select();
+            draw();
+        };
+
+        input.oninput = ()=>{ 
+            t[k] = +input.value; 
+            updateSimplified(hi); 
+            draw(); 
+        };
+
+        input.onkeydown = e=>{
+            const fields=["b1","b2","h"];
+            if(e.key==="ArrowUp"){ e.preventDefault(); selectInput(hi,idx-1,j); }
+            if(e.key==="ArrowDown"){ e.preventDefault(); selectInput(hi,idx+1,j); }
+            if(e.key==="ArrowLeft" && j>0){ e.preventDefault(); selectInput(hi,idx,j-1); }
+            if(e.key==="ArrowRight" && j<fields.length-1){ e.preventDefault(); selectInput(hi,idx,j+1); }
+        };
+
         c.appendChild(input);
       });
 
       const add=row.insertCell(), del=row.insertCell();
-      const bAdd=document.createElement("button"); bAdd.textContent="+"; bAdd.onclick=e=>{ e.stopPropagation(); head.traps.splice(idx+1,0,{...t}); rebuild(); updateSimplified(hi); }; add.appendChild(bAdd);
-      const bDel=document.createElement("button"); bDel.textContent="✕"; bDel.onclick=e=>{ e.stopPropagation(); head.traps.splice(idx,1); rebuild(); updateSimplified(hi); }; del.appendChild(bDel);
+      const bAdd=document.createElement("button"); bAdd.textContent="+"; bAdd.onclick=()=>{ head.traps.splice(idx+1,0,{...t}); rebuild(); updateSimplified(hi); }; add.appendChild(bAdd);
+      const bDel=document.createElement("button"); bDel.textContent="✕"; bDel.onclick=()=>{ head.traps.splice(idx,1); rebuild(); updateSimplified(hi); }; del.appendChild(bDel);
     });
   });
   draw();
 }
 
-// ---------- Выделение ----------
-function toggleSelect(headIdx,idx,force=false){
-  if(selected && selected.head===headIdx && selected.idx===idx && !force) selected=null;
-  else selected={head:headIdx,idx};
-  rebuild();
-}
-
 // ---------- Навигация стрелками ----------
-function handleArrowKeys(e,hi,idx,col){
-  const fields=["b1","b2","h"];
-  if(e.key==="ArrowUp"){ e.preventDefault(); selectInput(hi,idx-1,col); }
-  if(e.key==="ArrowDown"){ e.preventDefault(); selectInput(hi,idx+1,col); }
-  if(e.key==="ArrowLeft" && col>0){ e.preventDefault(); selectInput(hi,idx,col-1); }
-  if(e.key==="ArrowRight" && col<fields.length-1){ e.preventDefault(); selectInput(hi,idx,col+1); }
-}
 function selectInput(hi,idx,col){
   if(idx<0 || idx>=heads[hi].traps.length) return;
   const table=document.getElementById("table"+hi);
@@ -217,7 +230,57 @@ function exportParams(hi){ download(heads[hi].name+".json", JSON.stringify(heads
 function importParams(hi){ const i=document.createElement("input"); i.type="file"; i.accept=".json"; i.onchange=()=>{ const r=new FileReader(); r.onload=()=>{ try{ const data=JSON.parse(r.result); if(Array.isArray(data)) heads[hi].traps=data; rebuild(); updateSimplified(hi); }catch{alert("Ошибка файла"); } }; r.readAsText(i.files[0]); }; i.click(); }
 function exportSVG(){ /* твоя реализация */ }
 function exportDXF(){ /* твоя реализация */ }
+function toggleDiff(){ /* твоя реализация */ }
 function download(n,d){ const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([d])); a.download=n; a.click(); }
+
+// ---------- Экспорт .chc для TubesT ----------
+function exportCHC(hi){
+    const head=heads[hi];
+    if(!head.traps.length){ alert("Нет трапеций для экспорта!"); return; }
+
+    let yOffset=0;
+    const lines=head.traps.map(t=>{
+        const line = [t.b1.toFixed(2), t.b2.toFixed(2), t.h.toFixed(2), yOffset.toFixed(2)].join(",");
+        yOffset+=t.h;
+        return line;
+    });
+
+    const text = lines.join("\n");
+    download(head.name+".chc", text);
+}
+
+// ---------- Импорт .chc ----------
+function importCHC(hi){
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".chc";
+    input.onchange = () => {
+        const file = input.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            const text = reader.result;
+            const lines = text.split(/\r?\n/);
+            const traps = [];
+            for(const line of lines){
+                if(!line.trim()) continue;
+                const parts = line.split(",").map(Number);
+                if(parts.length < 4) continue;
+                const [b1,b2,h,yOffset] = parts;
+                traps.push({b1,b2,h});
+            }
+            if(traps.length){
+                heads[hi].traps = traps;
+                rebuild();
+                updateSimplified(hi);
+                draw();
+                alert(`Импортировано ${traps.length} трапеций из ${file.name}`);
+            } else alert("Файл пуст или некорректен");
+        };
+        reader.readAsText(file);
+    };
+    input.click();
+}
 
 // ---------- Авто-упрощение ----------
 function updateSimplified(hi){
