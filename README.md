@@ -32,10 +32,6 @@
 - Fully compatible `.chc` export for TubesT.  
 - Improved SVG/DXF export.  
 
-### License
-
-MIT License
-
 ---
 
 ## Русская версия
@@ -69,7 +65,3 @@ MIT License
 
 - Полноценный экспорт `.chc` для TubesT.  
 - Улучшенный экспорт в SVG/DXF.  
-
-### Лицензия
-
-MIT License
