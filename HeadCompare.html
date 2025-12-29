@@ -2,68 +2,62 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Равнобедренные трапеции</title>
+<title>Trapezoids Tool</title>
 <style>
-  body {
-    margin: 0;
-    font-family: Arial, sans-serif;
-    display: flex;
-    height: 100vh;
-  }
-  canvas {
-    border-right: 1px solid #ccc;
-    background: #fff;
-  }
-  .panel {
-    width: 420px;
-    padding: 10px;
-    overflow-y: auto;
-  }
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 10px;
-  }
-  th, td {
-    border: 1px solid #ccc;
-    padding: 4px;
-    text-align: center;
-  }
-  tr.selected {
-    background: #ffeeba;
-  }
-  button {
-    margin: 4px 0;
-    width: 100%;
-  }
-  h3 {
-    margin: 10px 0 4px;
-  }
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  display: flex;
+  height: 100vh;
+}
+canvas {
+  background: #fff;
+  cursor: grab;
+}
+canvas.dragging {
+  cursor: grabbing;
+}
+.panel {
+  width: 460px;
+  padding: 10px;
+  border-left: 1px solid #ccc;
+  overflow-y: auto;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th, td {
+  border: 1px solid #ccc;
+  padding: 4px;
+  text-align: center;
+}
+tr.selected {
+  background: #ffeeba;
+}
+button, input[type="color"] {
+  width: 100%;
+  margin: 4px 0;
+}
 </style>
 </head>
 <body>
 
-<canvas id="canvas" width="800" height="600"></canvas>
+<canvas id="canvas" width="900" height="600"></canvas>
 
 <div class="panel">
+  <button onclick="exportSVG()">Экспорт SVG</button>
+  <button onclick="exportDXF()">Экспорт DXF</button>
+  <button onclick="toggleDiff()">Разница контуров</button>
+
   <h3>Набор 1</h3>
-  <table id="table1">
-    <tr>
-      <th>h</th>
-      <th>b₁</th>
-      <th>b₂</th>
-    </tr>
-  </table>
+  <input type="color" id="color1" value="#007bff">
+  <table id="table1"><tr><th>h</th><th>b₁</th><th>b₂</th></tr></table>
   <button onclick="addTrapezoid(0)">Добавить</button>
 
   <h3>Набор 2</h3>
-  <table id="table2">
-    <tr>
-      <th>h</th>
-      <th>b₁</th>
-      <th>b₂</th>
-    </tr>
-  </table>
+  <input type="color" id="color2" value="#28a745">
+  <table id="table2"><tr><th>h</th><th>b₁</th><th>b₂</th></tr></table>
   <button onclick="addTrapezoid(1)">Добавить</button>
 </div>
 
@@ -71,8 +65,11 @@
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
-const scale = 3; // масштаб координат → пиксели
-const origin = { x: canvas.width / 2, y: canvas.height - 50 };
+let scale = 3;
+let origin = { x: canvas.width / 2, y: canvas.height - 50 };
+let dragging = false;
+let lastMouse = null;
+let showDiff = false;
 
 const sets = [
   { color: "#007bff", traps: [] },
@@ -81,22 +78,49 @@ const sets = [
 
 let selected = null;
 
-function addTrapezoid(setIndex) {
-  sets[setIndex].traps.push({ h: 50, b1: 120, b2: 80 });
+color1.oninput = e => sets[0].color = e.target.value;
+color2.oninput = e => sets[1].color = e.target.value;
+
+canvas.onwheel = e => {
+  e.preventDefault();
+  const zoom = e.deltaY < 0 ? 1.1 : 0.9;
+  scale *= zoom;
+  draw();
+};
+
+canvas.onmousedown = e => {
+  dragging = true;
+  canvas.classList.add("dragging");
+  lastMouse = { x: e.clientX, y: e.clientY };
+};
+
+canvas.onmouseup = () => {
+  dragging = false;
+  canvas.classList.remove("dragging");
+};
+
+canvas.onmousemove = e => {
+  if (!dragging) return;
+  origin.x += e.clientX - lastMouse.x;
+  origin.y += e.clientY - lastMouse.y;
+  lastMouse = { x: e.clientX, y: e.clientY };
+  draw();
+};
+
+function addTrapezoid(si) {
+  sets[si].traps.push({ h: 50, b1: 120, b2: 80 });
   rebuildTables();
   draw();
 }
 
 function rebuildTables() {
   [table1, table2].forEach((table, si) => {
-    table.innerHTML = `
-      <tr><th>h</th><th>b₁</th><th>b₂</th></tr>
-    `;
-    sets[si].traps.forEach((t, ti) => {
+    table.innerHTML = `<tr><th>h</th><th>b₁</th><th>b₂</th></tr>`;
+    [...sets[si].traps].reverse().forEach((t, ri) => {
+      const ti = sets[si].traps.length - 1 - ri;
       const row = table.insertRow();
-      if (selected && selected.set === si && selected.idx === ti) {
+      if (selected && selected.set === si && selected.idx === ti)
         row.classList.add("selected");
-      }
       row.onclick = () => {
         selected = { set: si, idx: ti };
         rebuildTables();
@@ -108,77 +132,133 @@ function rebuildTables() {
         input.type = "number";
         input.value = t[k];
         input.style.width = "60px";
-        input.oninput = () => {
-          t[k] = +input.value;
-          draw();
-        };
+        input.oninput = () => { t[k] = +input.value; draw(); };
         cell.appendChild(input);
       });
     });
   });
 }
 
-function drawAxes() {
-  ctx.strokeStyle = "#999";
-  ctx.lineWidth = 1;
-
-  // X
-  ctx.beginPath();
-  ctx.moveTo(0, origin.y);
-  ctx.lineTo(canvas.width, origin.y);
-  ctx.stroke();
-
-  // Y
-  ctx.beginPath();
-  ctx.moveTo(origin.x, 0);
-  ctx.lineTo(origin.x, canvas.height);
-  ctx.stroke();
-}
-
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  drawAxes();
 
   sets.forEach((set, si) => {
-    let yOffset = 0;
+    let y = 0;
     set.traps.forEach((t, ti) => {
-      const isSelected =
-        selected && selected.set === si && selected.idx === ti;
-
-      drawTrapezoid(
-        t.b1,
-        t.b2,
-        t.h,
-        yOffset,
-        isSelected ? "red" : set.color,
-        isSelected ? 3 : 1.5
+      drawTrap(t, y,
+        selected && selected.set === si && selected.idx === ti
+          ? "red"
+          : set.color,
+        2
       );
-      yOffset += t.h;
+      y += t.h;
     });
   });
+
+  if (showDiff && sets[0].traps.length && sets[1].traps.length) {
+    drawDiff();
+  }
 }
 
-function drawTrapezoid(b1, b2, h, yOffset, color, width) {
+function drawTrap(t, yOffset, color, w) {
   const y0 = origin.y - yOffset * scale;
-  const y1 = y0 - h * scale;
-
-  const halfB1 = (b1 * scale) / 2;
-  const halfB2 = (b2 * scale) / 2;
+  const y1 = y0 - t.h * scale;
+  const hb1 = t.b1 * scale / 2;
+  const hb2 = t.b2 * scale / 2;
 
   ctx.strokeStyle = color;
-  ctx.lineWidth = width;
+  ctx.lineWidth = w;
   ctx.beginPath();
-  ctx.moveTo(origin.x - halfB1, y0);
-  ctx.lineTo(origin.x + halfB1, y0);
-  ctx.lineTo(origin.x + halfB2, y1);
-  ctx.lineTo(origin.x - halfB2, y1);
+  ctx.moveTo(origin.x - hb1, y0);
+  ctx.lineTo(origin.x + hb1, y0);
+  ctx.lineTo(origin.x + hb2, y1);
+  ctx.lineTo(origin.x - hb2, y1);
   ctx.closePath();
   ctx.stroke();
 }
 
+function drawDiff() {
+  ctx.strokeStyle = "rgba(255,0,0,0.5)";
+  ctx.lineWidth = 4;
+
+  const a = buildOutline(sets[0]);
+  const b = buildOutline(sets[1]);
+
+  ctx.beginPath();
+  a.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+  b.reverse().forEach(p => ctx.lineTo(p.x, p.y));
+  ctx.closePath();
+  ctx.stroke();
+}
+
+function buildOutline(set) {
+  let y = 0;
+  const pts = [];
+  set.traps.forEach(t => {
+    pts.push({ x: origin.x - t.b1 * scale / 2, y: origin.y - y * scale });
+    y += t.h;
+  });
+  return pts;
+}
+
+function toggleDiff() {
+  showDiff = !showDiff;
+  draw();
+}
+
+function exportSVG() {
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg">\n`;
+  sets.forEach(set => {
+    let y = 0;
+    set.traps.forEach(t => {
+      const p = [
+        [-t.b1/2, y],
+        [ t.b1/2, y],
+        [ t.b2/2, y+t.h],
+        [-t.b2/2, y+t.h]
+      ];
+      svg += `<polygon points="${p.map(v=>v.join(",")).join(" ")}"
+        fill="none" stroke="${set.color}"/>\n`;
+      y += t.h;
+    });
+  });
+  svg += "</svg>";
+  download("trapezoids.svg", svg);
+}
+
+function exportDXF() {
+  let dxf = `0\nSECTION\n2\nENTITIES\n`;
+  sets.forEach(set => {
+    let y = 0;
+    set.traps.forEach(t => {
+      const pts = [
+        [-t.b1/2, y],
+        [ t.b1/2, y],
+        [ t.b2/2, y+t.h],
+        [-t.b2/2, y+t.h],
+        [-t.b1/2, y]
+      ];
+      dxf += "0\nLWPOLYLINE\n8\n0\n90\n5\n";
+      pts.forEach(p => {
+        dxf += `10\n${p[0]}\n20\n${p[1]}\n`;
+      });
+      y += t.h;
+    });
+  });
+  dxf += "0\nENDSEC\n0\nEOF";
+  download("trapezoids.dxf", dxf);
+}
+
+function download(name, data) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([data]));
+  a.download = name;
+  a.click();
+}
+
 addTrapezoid(0);
 addTrapezoid(1);
+draw();
 </script>
-
 </body>
 </html>
