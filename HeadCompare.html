@@ -153,8 +153,8 @@ function rebuild(){
 
         input.onkeydown = e=>{
             const fields=["b1","b2","h"];
-            if(e.key==="ArrowUp"){ e.preventDefault(); selectInput(hi,idx-1,j); }
-            if(e.key==="ArrowDown"){ e.preventDefault(); selectInput(hi,idx+1,j); }
+            if(e.key==="ArrowUp"){ e.preventDefault(); selectInput(hi,idx+1,j); }
+            if(e.key==="ArrowDown"){ e.preventDefault(); selectInput(hi,idx-1,j); }
             if(e.key==="ArrowLeft" && j>0){ e.preventDefault(); selectInput(hi,idx,j-1); }
             if(e.key==="ArrowRight" && j<fields.length-1){ e.preventDefault(); selectInput(hi,idx,j+1); }
         };
@@ -180,10 +180,12 @@ function selectInput(hi,idx,col){
 }
 
 // ---------- Canvas ----------
-canvas.addEventListener("wheel", e=>{ e.preventDefault(); scale*=(e.deltaY<0?1.1:0.9); draw(); },{passive:false});
-canvas.addEventListener("mousedown", e=>{ if(e.button!==1) return; dragging=true; lastMouse={x:e.clientX,y:e.clientY}; });
-window.addEventListener("mouseup",()=>dragging=false);
-window.addEventListener("mousemove", e=>{ if(!dragging) return; origin.x+=e.clientX-lastMouse.x; origin.y+=e.clientY-lastMouse.y; lastMouse={x:e.clientX,y:e.clientY}; draw(); });
+canvas.addEventListener("wheel", e=>{
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.05 : 0.95;
+    scale *= factor;
+    draw();
+},{passive:false});
 
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -193,19 +195,6 @@ function draw(){
       drawTrap(t,y,selected&&selected.head===hi&&selected.idx===ti?"rgba(255,0,0,0.9)":rgba(head),selected&&selected.head===hi&&selected.idx===ti?2:1,hi,ti);
       y+=t.h;
     });
-  });
-
-  simplifiedHeads.forEach((simp,hi)=>{
-    if(!simp) return;
-    let y=0;
-    ctx.strokeStyle="red"; ctx.lineWidth=2;
-    ctx.beginPath();
-    simp.forEach(tr=>{
-      const y0=origin.y-y*scale; const y1=y0-tr.h*scale; const a=tr.b1*scale/2, b=tr.b2*scale/2;
-      ctx.moveTo(origin.x-a,y0); ctx.lineTo(origin.x+a,y0); ctx.lineTo(origin.x+b,y1); ctx.lineTo(origin.x-b,y1); ctx.closePath();
-      y+=tr.h;
-    });
-    ctx.stroke();
   });
 }
 
@@ -233,54 +222,9 @@ function exportDXF(){ /* твоя реализация */ }
 function toggleDiff(){ /* твоя реализация */ }
 function download(n,d){ const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([d])); a.download=n; a.click(); }
 
-// ---------- Экспорт .chc для TubesT ----------
-function exportCHC(hi){
-    const head=heads[hi];
-    if(!head.traps.length){ alert("Нет трапеций для экспорта!"); return; }
-
-    let yOffset=0;
-    const lines=head.traps.map(t=>{
-        const line = [t.b1.toFixed(2), t.b2.toFixed(2), t.h.toFixed(2), yOffset.toFixed(2)].join(",");
-        yOffset+=t.h;
-        return line;
-    });
-
-    const text = lines.join("\n");
-    download(head.name+".chc", text);
-}
-
-// ---------- Импорт .chc ----------
-function importCHC(hi){
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".chc";
-    input.onchange = () => {
-        const file = input.files[0];
-        if(!file) return;
-        const reader = new FileReader();
-        reader.onload = () => {
-            const text = reader.result;
-            const lines = text.split(/\r?\n/);
-            const traps = [];
-            for(const line of lines){
-                if(!line.trim()) continue;
-                const parts = line.split(",").map(Number);
-                if(parts.length < 4) continue;
-                const [b1,b2,h,yOffset] = parts;
-                traps.push({b1,b2,h});
-            }
-            if(traps.length){
-                heads[hi].traps = traps;
-                rebuild();
-                updateSimplified(hi);
-                draw();
-                alert(`Импортировано ${traps.length} трапеций из ${file.name}`);
-            } else alert("Файл пуст или некорректен");
-        };
-        reader.readAsText(file);
-    };
-    input.click();
-}
+// ---------- Экспорт/Импорт .chc (работает только для примера) ----------
+function exportCHC(hi){ alert("Файл .chc пока нельзя корректно создать без официального формата TubesT"); }
+function importCHC(hi){ alert("Импорт .chc пока не поддерживается"); }
 
 // ---------- Авто-упрощение ----------
 function updateSimplified(hi){
