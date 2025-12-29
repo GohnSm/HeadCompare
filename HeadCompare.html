@@ -6,12 +6,12 @@
 <style>
 body { margin:0; font-family:Arial; display:flex; height:100vh; }
 canvas { background:#fff; flex:1; }
-.panel { width:580px; padding:10px; border-left:1px solid #ccc; overflow-y:auto; }
+.panel { width:600px; padding:10px; border-left:1px solid #ccc; overflow-y:auto; }
 table { width:100%; border-collapse:collapse; margin-bottom:6px; }
 th,td { border:1px solid #ccc; padding:3px; text-align:center; }
 tr.selected { background:#ffeeba; }
 input[type=number]{ width:55px; }
-input.nameInput{ width:120px; font-weight:bold; }
+input.nameInput{ width:140px; font-weight:bold; }
 button{ width:100%; margin:4px 0; }
 .row-btn{ width:26px; }
 </style>
@@ -25,15 +25,13 @@ button{ width:100%; margin:4px 0; }
   <button onclick="exportDXF()">Экспорт DXF</button>
   <button onclick="toggleDiff()">Разница контуров</button>
   <button onclick="addHead()">Добавить голову</button>
-
   <div id="headsContainer"></div>
 </div>
 
 <script>
 const canvas=document.getElementById("canvas"), ctx=canvas.getContext("2d");
-let scale=3, origin={x:canvas.width/2, y:canvas.height-50}, dragging=false, lastMouse=null, showDiff=false, selected=null;
-const heads=[]; // {name,color,alpha,traps}
-const simplifiedHeads=[];
+let scale=3, origin={x:canvas.width/2, y:canvas.height-50}, dragging=false, lastMouse=null, selected=null;
+const heads=[], simplifiedHeads=[];
 
 // ---------- Инициализация стартовых голов ----------
 function initHeads(){
@@ -50,7 +48,7 @@ function addHead(name="Новая голова",color="#0000ff",alpha=0.5,traps=
   renderHeadsPanel();
 }
 
-// ---------- Рендер панели голов ----------
+// ---------- Панель голов ----------
 function renderHeadsPanel(){
   const container=document.getElementById("headsContainer");
   container.innerHTML="";
@@ -58,23 +56,26 @@ function renderHeadsPanel(){
     const div=document.createElement("div");
     div.style.border="1px solid #aaa"; div.style.padding="5px"; div.style.marginBottom="6px";
 
+    // Имя головы
     const h3=document.createElement("div");
     const nameInput=document.createElement("input");
-    nameInput.value=head.name;
-    nameInput.className="nameInput";
+    nameInput.value=head.name; nameInput.className="nameInput";
     nameInput.oninput=()=>{ head.name=nameInput.value; draw(); };
     h3.appendChild(nameInput); div.appendChild(h3);
 
+    // Цвет и прозрачность
     const colorInput=document.createElement("input"); colorInput.type="color"; colorInput.value=head.color;
     colorInput.oninput=()=>{ head.color=colorInput.value; draw(); }; div.appendChild(document.createTextNode(" Цвет ")); div.appendChild(colorInput);
-
     const alphaInput=document.createElement("input"); alphaInput.type="range"; alphaInput.min=0.05; alphaInput.max=1; alphaInput.step=0.05; alphaInput.value=head.alpha;
     alphaInput.oninput=()=>{ head.alpha=+alphaInput.value; draw(); }; div.appendChild(document.createTextNode(" Прозрачность ")); div.appendChild(alphaInput);
 
     div.appendChild(document.createElement("br"));
 
+    // Экспорт/импорт
     const btnExport=document.createElement("button"); btnExport.textContent="Экспорт параметров"; btnExport.onclick=()=>exportParams(hi); div.appendChild(btnExport);
     const btnImport=document.createElement("button"); btnImport.textContent="Импорт параметров"; btnImport.onclick=()=>importParams(hi); div.appendChild(btnImport);
+
+    // Авто-упрощение
     const btnAuto=document.createElement("button"); btnAuto.textContent="Авто-упрощение до 15"; 
     btnAuto.onclick=()=>{ 
       const simplified=optimizeTrapezoids(head.traps,15);
@@ -83,6 +84,12 @@ function renderHeadsPanel(){
     };
     div.appendChild(btnAuto);
 
+    // Удаление головы
+    const btnDelHead=document.createElement("button"); btnDelHead.textContent="Удалить голову";
+    btnDelHead.onclick=()=>{ if(confirm("Удалить эту голову?")) { heads.splice(hi,1); simplifiedHeads.splice(hi,1); renderHeadsPanel(); } };
+    div.appendChild(btnDelHead);
+
+    // Таблица
     const table=document.createElement("table"); table.id="table"+hi; table.innerHTML="<tr><th>№</th><th>b₁</th><th>b₂</th><th>h</th><th>+</th><th>✕</th></tr>"; div.appendChild(table);
     const btnAddRow=document.createElement("button"); btnAddRow.textContent="Добавить снизу"; btnAddRow.onclick=()=>{ head.traps.push({h:50,b1:120,b2:80}); rebuild(); }; div.appendChild(btnAddRow);
 
@@ -91,7 +98,7 @@ function renderHeadsPanel(){
   rebuild();
 }
 
-// ---------- Таблица и отрисовка ----------
+// ---------- Таблица ----------
 function rebuild(){
   heads.forEach((head,hi)=>{
     const table=document.getElementById("table"+hi);
@@ -117,8 +124,13 @@ function rebuild(){
       const bAdd=document.createElement("button"); bAdd.textContent="+"; bAdd.onclick=e=>{ e.stopPropagation(); head.traps.splice(idx+1,0,{...t}); rebuild(); updateSimplified(hi); }; add.appendChild(bAdd);
       const bDel=document.createElement("button"); bDel.textContent="✕"; bDel.onclick=e=>{ e.stopPropagation(); head.traps.splice(idx,1); rebuild(); updateSimplified(hi); }; del.appendChild(bDel);
 
+      // Drag & drop с исключением input/button
       row.draggable=true;
-      row.ondragstart=e=>{ e.dataTransfer.setData("text/plain", idx+","+hi); row.classList.add("dragging"); };
+      row.ondragstart=e=>{
+        if(e.target.tagName==="INPUT" || e.target.tagName==="BUTTON") { e.preventDefault(); return; }
+        e.dataTransfer.setData("text/plain", idx+","+hi); 
+        row.classList.add("dragging"); 
+      };
       row.ondragend=e=>row.classList.remove("dragging");
       row.ondragover=e=>e.preventDefault();
       row.ondrop=e=>{
@@ -219,7 +231,7 @@ function autoSimplifySet(hi){
 
 // ---------- Обновление упрощённого контура ----------
 function updateSimplified(hi){
-  simplifiedHeads.forEach((_,i)=>{ if(i===hi && heads[i].traps.length>0) simplifiedHeads[i]=optimizeTrapezoids(heads[i].traps,15); });
+  simplifiedHeads[hi]=optimizeTrapezoids(heads[hi].traps,15);
   draw();
 }
 
